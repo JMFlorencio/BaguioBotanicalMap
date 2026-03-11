@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Resort Map | Premium Edition</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --brand: #ff9800;
+            --dark: #1a1a1a;
+            --glass: rgba(255, 255, 255, 0.85);
+            --radius: 24px;
+        }
+
+        body, html { 
+            margin: 0; padding: 0; height: 100%; 
+            font-family: 'Inter', sans-serif; 
+            background: #f0f2f5; 
+            overflow: hidden; 
+            touch-action: none; 
+        }
+        
+        #map { height: 100vh; width: 100vw; background: #e5e7eb; z-index: 1; }
+
+        /* SEARCH WRAPPER - Positioned to the left side */
+        .search-wrapper {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 70%;
+            max-width: 300px;
+            z-index: 1000;
+        }
+
+        #search-input {
+            width: 100%;
+            padding: 12px 18px;
+            border-radius: 50px;
+            border: none;
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            font-size: 15px;
+            outline: none;
+        }
+
+        /* BOTTOM SHEET - Minimized by default */
+        #bottom-sheet {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40px; 
+            min-height: 40px;
+            max-height: 250px; 
+            background: white;
+            z-index: 1000;
+            border-radius: var(--radius) var(--radius) 0 0;
+            box-shadow: 0 -10px 30px rgba(0,0,0,0.1);
+            padding: 0 20px 20px 20px;
+            display: flex;
+            flex-direction: column;
+            transition: height 0.1s ease-out;
+            overflow: hidden;
+            will-change: height;
+        }
+
+        .drag-handle-container {
+            width: 100%;
+            padding: 15px 0;
+            cursor: grab;
+            display: flex;
+            justify-content: center;
+        }
+
+        .drag-handle {
+            width: 40px;
+            height: 5px;
+            background: #ccc;
+            border-radius: 10px;
+        }
+
+        .sheet-title {
+            font-weight: 600;
+            font-size: 18px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+            color: var(--dark);
+        }
+
+        #station-list {
+            display: flex;
+            overflow-x: auto;
+            gap: 15px;
+            padding-bottom: 15px;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        #station-list::-webkit-scrollbar { display: none; }
+
+        .station-card {
+            flex: 0 0 140px;
+            scroll-snap-align: start;
+            cursor: pointer;
+        }
+
+        .station-card img {
+            width: 140px;
+            height: 100px;
+            border-radius: 16px;
+            object-fit: cover;
+            background: #eee;
+        }
+
+        .station-card span {
+            display: block;
+            margin-top: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--dark);
+        }
+
+        .orange-pin {
+            width: 24px;
+            height: 24px;
+            background: var(--brand);
+            border: 3px solid white;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="search-wrapper">
+        <input type="text" id="search-input" placeholder="Find a place..." onkeyup="filterStations()">
+    </div>
+
+    <div id="map"></div>
+
+    <div id="bottom-sheet">
+        <div class="drag-handle-container" id="drag-zone">
+            <div class="drag-handle"></div>
+        </div>
+        <div class="sheet-title">Explore Botanical</div>
+        <div id="station-list"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        const stations = [
+            { id: 1, y: 765, x: 170, name: 'Station:1', desc: 'Main botanical entrance', img: 'assets/Arbor.png' },
+            { id: 2, y: 890, x: 710, name: 'Station:2', desc: 'Exotic orchid collection', img: 'assets/Orchidarium.png' },
+            { id: 3, y: 660, x: 765, name: 'Station:3', desc: 'Peaceful garden walk', img: 'assets/PMSEA Garden.png' },
+            { id: 4, y: 490, x: 840, name: 'Station:4', desc: 'Historical site', img: 'assets/Japanese Tunnel.png' },
+            { id: 5, y: 230, x: 650, name: 'Station:5', desc: 'Japanese Garden', img: 'assets/Japanese Garden.png' },
+            { id: 6, y: 125, x: 460, name: 'Station:6', desc: 'Korea Garden', img: 'assets/Korea Garden.png' },
+            { id: 7, y: 350, x: 150, name: 'Station:7', desc: 'Chinese Garden', img: 'assets/Chinese Garden.png' },
+            { id: 8, y: 550, x: 280, name: 'Station:8', desc: 'City of Vaughan Friendship Garden', img: 'assets/City of Vaughan Friendship Garden.png' },
+            { id: 9, y: 800, x: 450, name: 'Station:9', desc: 'Sports center', img: 'assets/tennis.jpg' },
+            { id: 10, y: 100, x: 850, name: 'Station:10', desc: 'Waterfront', img: 'assets/beach.jpg' },
+            { id: 11, y: 420, x: 920, name: 'Station:11', desc: 'Play zone', img: 'assets/kids.jpg' },
+            { id: 12, y: 610, x: 120, name: 'Station:12', desc: 'Zen space', img: 'assets/yoga.jpg' },
+            { id: 13, y: 220, x: 340, name: 'Station:13', desc: 'Reading room', img: 'assets/library.jpg' },
+            { id: 14, y: 710, x: 520, name: 'Station:14', desc: 'Gifts & Crafts', img: 'assets/shop.jpg' },
+            { id: 15, y: 310, x: 740, name: 'Station:15', desc: 'Movies', img: 'assets/cinema.jpg' },
+            { id: 16, y: 840, x: 290, name: 'Station:16', desc: 'Arrivals', img: 'assets/helipad.jpg' }
+        ];
+
+        const map = L.map('map', {
+            crs: L.CRS.Simple,
+            minZoom: -0.5, 
+            maxZoom: 1,    
+            zoomControl: false,
+            attributionControl: false,
+            bounceAtZoomLimits: true 
+        });
+
+        const bounds = [[0, 0], [1000, 1000]];
+        L.imageOverlay('assets/map.png', bounds).addTo(map);
+        map.fitBounds(bounds);
+
+        const listContainer = document.getElementById('station-list');
+        stations.forEach(s => {
+            const icon = L.divIcon({
+                className: '',
+                html: `<div class="orange-pin"></div>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 24]
+            });
+            const marker = L.marker([s.y, s.x], { icon: icon }).addTo(map)
+                .bindPopup(`<div class="popup-container"><b>${s.name}</b><br>${s.desc}</div>`);
+            
+            const card = document.createElement('div');
+            card.className = 'station-card';
+            card.setAttribute('data-name', s.name.toLowerCase());
+            card.innerHTML = `
+                <img src="${s.img}" alt="${s.name}" onerror="this.src='https://via.placeholder.com/140x100?text=${s.name}'">
+                <span>${s.name}</span>
+            `;
+            card.onclick = () => {
+                map.flyTo([s.y, s.x], 0.5, { duration: 1.5 });
+                marker.openPopup();
+            };
+            listContainer.appendChild(card);
+        });
+
+        const sheet = document.getElementById('bottom-sheet');
+        const dragZone = document.getElementById('drag-zone');
+        let isDragging = false;
+        let startY, startHeight;
+
+        const startDrag = (e) => {
+            isDragging = true;
+            startY = e.pageY || (e.touches ? e.touches[0].pageY : 0);
+            startHeight = sheet.offsetHeight;
+            sheet.style.transition = 'none';
+        };
+
+        const onDrag = (e) => {
+            if (!isDragging) return;
+            const currentY = e.pageY || (e.touches ? e.touches[0].pageY : 0);
+            const deltaY = startY - currentY;
+            const newHeight = startHeight + deltaY;
+            if (newHeight >= 40 && newHeight <= 250) {
+                sheet.style.height = `${newHeight}px`;
+            }
+        };
+
+        const stopDrag = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            sheet.style.transition = 'height 0.3s ease';
+            if (sheet.offsetHeight < 100) {
+                sheet.style.height = "40px";
+            } else {
+                sheet.style.height = "250px";
+            }
+        };
+
+        dragZone.addEventListener('mousedown', startDrag);
+        window.addEventListener('mousemove', onDrag);
+        window.addEventListener('mouseup', stopDrag);
+        dragZone.addEventListener('touchstart', startDrag, {passive: true});
+        window.addEventListener('touchmove', onDrag, {passive: false});
+        window.addEventListener('touchend', stopDrag);
+
+        function filterStations() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            document.querySelectorAll('.station-card').forEach(card => {
+                const name = card.getAttribute('data-name');
+                card.style.display = name.includes(query) ? 'block' : 'none';
+            });
+        }
+    </script>
+</body>
+</html>
